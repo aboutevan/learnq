@@ -3,30 +3,52 @@ function ajaxReq(url, opts) {
   var options = {
     method: opts.method ? opts.method : 'GET',
     success: opts.success,
-    context: opts.context,
+    context: opts.context ? opts.context : this,
     failure: opts.failure,
     complete: opts.complete,
   }
-  console.log(options.context)
 
-  var xhr = new XMLHttpRequest();
-  xhr.onreadystatechange = handleRequest;
+  var requestMethods = (function() {
+    return {
+      complete: function() {
+        return options.context ? options.complete.apply(options.context, [xhr, xhr.status]) : options.complete();
+      },
+      success: function(data, status, xhr) {
+        return options.context ? options.success.apply(options.context, [data, status, xhr]) : options.success(data);
+      },
+      failure: function() {
+        return options.context ? options.failure.apply(options.context, [xhr, xhr.status, xhr.responseText]) : options.failure();
+      },
+    }
+  })();
 
-  function handleRequest() {
+  var handleRequest = function(xhr, options, requestMethods) {
+    var xhr = xhr;
+    var status = xhr.status;
+    var responseText = xhr.responseText;
+
     try {
         if (xhr.readyState === 4) {
-            options.context ? options.complete.bind(options.context) : options.complete();
+            requestMethods.complete(xhr, status);
             if (xhr.status === 200) {
-               options.success();
+              var jsonData = JSON.parse(responseText);
+              requestMethods.success(jsonData, status, xhr);
             } else {
-                options.context ? options.failure.bind(options.context) : options.failure();
+              requestMethods.failure(xhr, status, responseText);
             }
         }
     }
     catch(e) {
-        console.log('Caught Exception: ' + e.description);
+        console.log('Caught Exception: ' + e.description + ' - Could not connect');
     }
   }
+
+  var xhr = new XMLHttpRequest();
+
+
+  xhr.onreadystatechange = function() {
+    return handleRequest(xhr, options, requestMethods);
+  };
   xhr.open(options.method, url);
   xhr.send();
 
